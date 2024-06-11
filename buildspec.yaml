@@ -1,0 +1,35 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      python: "3.10"
+    commands:
+      - echo "Installing dependencies..."
+      - pip install --upgrade pip
+      - pip install awscli
+
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR...
+      - aws --version
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/lambda-pdf
+
+  build:
+    commands:
+      - echo Build started on `date`
+      - echo Building the Docker image...
+      - docker build -f api.dockerfile -t $REPOSITORY_URI:latest -t $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER .
+
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image...
+      - docker push $REPOSITORY_URI:latest
+      - docker push $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER
+      - echo Writing image definitions file...
+      - printf '[{"name":"fashion-api","imageUri":"%s"}]' $REPOSITORY_URI:latest > imagedefinitions.json
+
+artifacts:
+  files: imagedefinitions.json
