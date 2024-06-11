@@ -1,35 +1,36 @@
 version: 0.2
 
+env:
+  variables:
+    S3_BUCKET: "your-s3-bucket-name"  # Replace with your S3 bucket name
+    STACK_NAME: "your-stack-name"     # Replace with your stack name
+
 phases:
   install:
     runtime-versions:
-      python: "3.10"
+      python: 3.10
+      docker: 19
     commands:
-      - echo "Installing dependencies..."
-      - pip install --upgrade pip
-      - pip install awscli
+      - pip install aws-sam-cli
 
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
-      - aws --version
-      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
-      - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/lambda-pdf
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin <account-id>.dkr.ecr.<region>.amazonaws.com  # Replace with your account ID and region
+      - echo "Building the SAM application..."
+      - sam build
 
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Docker image...
-      - docker build -f api.dockerfile -t $REPOSITORY_URI:latest -t $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER .
+      - echo "Packaging the SAM application..."
+      - sam package --output-template-file packaged.yaml --s3-bucket $S3_BUCKET
 
   post_build:
     commands:
-      - echo Build completed on `date`
-      - echo Pushing the Docker image...
-      - docker push $REPOSITORY_URI:latest
-      - docker push $REPOSITORY_URI:$CODEBUILD_BUILD_NUMBER
-      - echo Writing image definitions file...
-      - printf '[{"name":"fashion-api","imageUri":"%s"}]' $REPOSITORY_URI:latest > imagedefinitions.json
+      - echo "Deploying the SAM application..."
+      - sam deploy --template-file packaged.yaml --stack-name $STACK_NAME --capabilities CAPABILITY_IAM
 
 artifacts:
-  files: imagedefinitions.json
+  files:
+    - packaged.yaml
+  discard-paths: yes
